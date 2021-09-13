@@ -69,7 +69,7 @@ export default {
     },
     transferOrbits: function() {
       const orbits = [];
-      if (this.journey) {
+      if (this.selectedJourney) {
         orbits.push({
           orbit: this.selectedJourney.transfer1.orbit,
           interval: [this.selectedJourney.startTime, this.selectedJourney.slingshotTime],

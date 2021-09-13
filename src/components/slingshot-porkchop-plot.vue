@@ -50,7 +50,7 @@ export default {
     },
     useWorker: {
       type: Boolean,
-      default: false,
+      default: true,
     }
   },
   data: function () {
@@ -65,7 +65,7 @@ export default {
     this.ctx = this.canvas.getContext('2d');
     this.plotImageData = this.ctx.createImageData(PLOT_WIDTH, PLOT_HEIGHT);
     if (this.useWorker) {
-      this.worker = new Worker("js/porkchop-worker.js");
+      this.worker = new Worker("js/slingshot-porkchop-worker.js");
       this.worker.onmessage = (event) => {
         this.workerMessage(event);
       };

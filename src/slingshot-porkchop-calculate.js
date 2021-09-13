@@ -77,11 +77,11 @@ const slingshotPorkchopCalculate = (mission, progressCallback, deltaVCallback) =
 
         if (x === 0) {
             console.log(i);
-            const now = Date.now();
-            if (now - lastProgress > 100) {
-                progressCallback((y + 1) / HEIGHT);
-                lastProgress = now;
-            }
+        }
+        const now = Date.now();
+        if (now - lastProgress > 100) {
+            progressCallback((y + 1) / HEIGHT);
+            lastProgress = now;
         }
     });
 
