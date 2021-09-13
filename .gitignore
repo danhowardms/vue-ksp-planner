@@ -1,0 +1,16 @@
+node_modules
+/public/js
+/public/css
+/public/mix-manifest.json
+
+# Ignore all hidden files...
+/.*
+# ....apart from the following exceptions
+!/.gitattributes
+!/.gitignore
+
+# Standard Windows and Mac system files to ignore
+Icon?
+ehthumbs.db
+Thumbs.db
+.DS_Store
