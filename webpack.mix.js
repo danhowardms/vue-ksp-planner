@@ -13,5 +13,6 @@ mix.webpackConfig({
 mix.setPublicPath('public');
 mix.js('src/app.js', 'js');
 mix.js('src/porkchop-worker.js', 'js');
+mix.js('src/slingshot-porkchop-worker.js', 'js');
 mix.vue();
 mix.sass('sass/app.scss', 'css');

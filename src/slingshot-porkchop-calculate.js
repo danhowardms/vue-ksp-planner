@@ -8,16 +8,15 @@ const WIDTH = 300;
 const HEIGHT = 300;
 
 const slingshotPorkchopCalculate = (mission, progressCallback, deltaVCallback) => {
-
-    const originBody = (mission.originBody instanceof  CelestialBody) ? mission.originBody : CelestialBody.fromJSON(mission.originBody);
+    const originBody = (mission.originBody instanceof  CelestialBody) ? mission.originBody : CelestialBody.getByName(mission.originBody.name);
     const initialOrbitalVelocity = mission.initialOrbitalVelocity;
-    const slingshotBody = mission.slingshotBody;
-    const destinationBody = (mission.destinationBody instanceof CelestialBody) ? mission.destinationBody : CelestialBody.fromJSON(mission.destinationBody);
+    const slingshotBody = (mission.slingshotBody instanceof CelestialBody ? mission.slingshotBody : CelestialBody.getByName(mission.slingshotBody.name));
+    const destinationBody = (mission.destinationBody instanceof CelestialBody) ? mission.destinationBody : CelestialBody.getByName(mission.destinationBody.name);
     const finalOrbitalVelocity = mission.finalOrbitalVelocity;
-    const earliestDeparture = mission.earliestDeparture;
-    const shortestTimeOfFlight = mission.shortestTimeOfFlight;
-    const xResolution = mission.xScale / WIDTH;
-    const yResolution = mission.yScale / HEIGHT;
+    const earliestDeparture = mission.departureRange[0];
+    const shortestTimeOfFlight = mission.durationRange[0];
+    const xResolution = (mission.departureRange[1] - mission.departureRange[0]) / WIDTH;
+    const yResolution = (mission.durationRange[1] - mission.durationRange[0]) / HEIGHT;
 
     const iterateJourneys = (fn) => {
         let i = 0;
@@ -37,7 +36,7 @@ const slingshotPorkchopCalculate = (mission, progressCallback, deltaVCallback) =
     let sumLogDeltaV = 0;
     let sumSqLogDeltaV = 0;
     let deltaVCount = 0;
-    let lastProgress = 0;
+    let lastProgress = Date.now();
     let minDeltaVPoint = null;
 
     iterateJourneys((i, y, x, timeOfFlight, departureTime) => {
@@ -58,6 +57,7 @@ const slingshotPorkchopCalculate = (mission, progressCallback, deltaVCallback) =
             // deltaV = slingshot.deltaVMan;
             // deltaV = angleBetween(slingshot.vT1EndSs, slingshot.vT2StartSs);
         } catch (e) {
+            console.log(e);
             deltaV = NaN;
         }
         deltaVs[i] = deltaV;
@@ -79,8 +79,17 @@ const slingshotPorkchopCalculate = (mission, progressCallback, deltaVCallback) =
             console.log(i);
         }
         const now = Date.now();
-        if (now - lastProgress > 100) {
+        if (now - lastProgress > 1000) {
             progressCallback((y + 1) / HEIGHT);
+            deltaVCallback({
+                deltaVs: deltaVs,
+                minDeltaV: minDeltaV,
+                minDeltaVPoint: minDeltaVPoint,
+                maxDeltaV: maxDeltaV,
+                deltaVCount: deltaVCount,
+                sumLogDeltaV: sumLogDeltaV,
+                sumSqLogDeltaV: sumSqLogDeltaV
+            });
             lastProgress = now;
         }
     });

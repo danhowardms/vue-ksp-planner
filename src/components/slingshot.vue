@@ -2,7 +2,46 @@
   <div>
     <div class="row">
       <div class="col-6">
-        <slingshot-porkchop-plot v-if="mission" :mission="mission" @selectedJourney="selectedJourney = $event" />
+          <div class="row g-3 mb-4">
+            <div class="col-4">
+              <label class="form-label">Origin Body</label>
+              <select class="form-select" v-model="originBodyName" >
+                <option v-for="planetName in planetNames" :value="planetName">{{ planetName }}</option>
+              </select>
+            </div>
+            <div class="col-4">
+              <label class="form-label">Slingshot Body</label>
+              <select class="form-select" v-model="slingshotBodyName" >
+                  <option v-for="planetName in planetNames" :value="planetName">{{ planetName }}</option>
+              </select>
+            </div>
+            <div class="col-4">
+              <label class="form-label">Destination Body</label>
+              <select class="form-select" v-model="destinationBodyName" >
+                  <option v-for="planetName in planetNames" :value="planetName">{{ planetName }}</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Depart After</label>
+              <input type="number" class="form-control" :min="0" v-model.number="departMinDays" />
+            </div>
+            <div class="col-6">
+              <label class="form-label">Depart Before</label>
+              <input type="number" class="form-control" :min="departMinDays + 1" v-model.number="departMaxDays" />
+            </div>
+            <div class="col-6">
+              <label class="form-label">Travel Time Min</label>
+              <input type="number" class="form-control" :min="1" v-model.number="travelTimeMinDays" />
+            </div>
+            <div class="col-6">
+              <label class="form-label">Travel Time Max</label>
+              <input type="number" class="form-control" :min="travelTimeMinDays + 1" v-model.number="travelTimeMaxDays" />
+            </div>
+            <div class="col-12">
+              <button class="btn btn-primary" @click="calculate">Calculate</button>
+            </div>
+          </div>
+          <slingshot-porkchop-plot v-if="mission" :mission="mission" @selectedJourney="selectedJourney = $event" />
       </div>
       <div class="col-6">
         <template v-if="selectedJourney">
@@ -32,12 +71,18 @@ export default {
       originBodyName: "Kerbin",
       slingshotBodyName: "Eve",
       destinationBodyName: "Moho",
-      departAfterDays: 0,
-      travelTimeDays: 100,
+      departMinDays: 0,
+      departMaxDays: 1600,
+      travelTimeMinDays: 450,
+      travelTimeMaxDays: 700,
+      mission: null,
       selectedJourney: null,
     };
   },
   computed: {
+    planetNames: function() {
+        return ['Moho', 'Eve', 'Kerbin', 'Duna', 'Dres', 'Jool', 'Eeloo'];
+    },
     originBody: function() {
       return CelestialBody.getByName(this.originBodyName);
     },
@@ -90,22 +135,22 @@ export default {
       }
       return orbits;
     },
-    mission: function() {
+  },
+  methods: {
+    calculate: function() {
       const originOrbitAltitudeKm = 100;
       const destinationOrbitAltitudeKm = 100;
       const originOrbitalSpeed = this.originBody.circularOrbitVelocity(originOrbitAltitudeKm * 1000);
       const destinationOrbitalSpeed = this.destinationBody.circularOrbitVelocity(destinationOrbitAltitudeKm * 1000);
-      return {
+      this.mission = {
         startTime: 0,
         originBody: this.originBody,
         slingshotBody: this.slingshotBody,
         destinationBody: this.destinationBody,
         initialOrbitalVelocity: originOrbitalSpeed,
         finalOrbitalVelocity: destinationOrbitalSpeed,
-        earliestDeparture: this.departAfter,
-        shortestTimeOfFlight: this.travelTime,
-        xScale: 1600 * 6 * 60 * 60,
-        yScale: 240 * 6 * 60 * 60,
+        departureRange: [this.departMinDays * 6 * 60 * 60, this.departMaxDays * 6 * 60 * 60],
+        durationRange: [this.travelTimeMinDays * 6 * 60 * 60, this.travelTimeMaxDays * 6 * 60 * 60],
       };
     }
   }

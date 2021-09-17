@@ -85,20 +85,22 @@ export default {
     }
   },
   computed: {
+    xScale: function() {
+        return (this.mission.departureRange[1] - this.mission.departureRange[0]) / PLOT_WIDTH;
+    },
+    yScale: function() {
+        return (this.mission.durationRange[1] - this.mission.durationRange[0]) / PLOT_HEIGHT;
+    },
     selectedJourney: function() {
       if (! this.selectedPoint) {
         return null;
       }
-      const xResolution = this.mission.xScale / PLOT_WIDTH;
-      const yResolution = this.mission.yScale / PLOT_HEIGHT;
-      const departureTime = this.mission.earliestDeparture + this.selectedPoint.x * xResolution;
-      const totalDuration = this.mission.shortestTimeOfFlight + this.selectedPoint.y * yResolution;
       const opts = {
-        startTime: departureTime,
         originBody: this.mission.originBody,
         slingshotBody: this.mission.slingshotBody,
         destinationBody: this.mission.destinationBody,
-        totalDuration: totalDuration,
+        startTime: this.startTimeAtPixel(this.selectedPoint.x),
+        totalDuration: this.durationAtPixel(this.selectedPoint.y),
         originOrbitalSpeed: this.mission.initialOrbitalVelocity,
         destinationOrbitalSpeed: this.mission.finalOrbitalVelocity,
       };
@@ -106,6 +108,12 @@ export default {
     }
   },
   methods: {
+    startTimeAtPixel: function(x) {
+        return this.mission.departureRange[0] + x * this.xScale;
+    },
+    durationAtPixel: function(y) {
+        return this.mission.durationRange[0] + y * this.yScale;
+    },
     calculate: function (erase) {
       if (erase == null) {
         erase = false;
@@ -197,6 +205,7 @@ export default {
       //var ctx, deltaV, _n;
       const ctx = this.ctx;
       ctx.save();
+      this.ctx.clearRect(PLOT_X_OFFSET + PLOT_WIDTH + 60, 0, 100, 360);
       ctx.font = '10pt "Helvetic Neue",Helvetica,Arial,sans serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = 'black';
@@ -234,11 +243,11 @@ export default {
         if (i === 1.0) {
           ctx.textBaseline = 'top';
         }
-        ctx.fillText(Math.trunc((this.mission.shortestTimeOfFlight + i * this.mission.yScale) / (6 * 60 * 60)), PLOT_X_OFFSET - TIC_LENGTH - 3, (1.0 - i) * PLOT_HEIGHT);
+        ctx.fillText(Math.trunc(this.durationAtPixel(i * PLOT_HEIGHT) / (6 * 60 * 60)), PLOT_X_OFFSET - TIC_LENGTH - 3, (1.0 - i) * PLOT_HEIGHT);
       }
       ctx.textAlign = 'center';
       for (let i = 0; i <= 1.0; i += 0.25) {
-        ctx.fillText(Math.trunc((this.mission.earliestDeparture + i * this.mission.xScale) / (6 * 60 * 60)), PLOT_X_OFFSET + i * PLOT_WIDTH, PLOT_HEIGHT + TIC_LENGTH + 3);
+        ctx.fillText(Math.trunc(this.startTimeAtPixel(i * PLOT_WIDTH) / (6 * 60 * 60)), PLOT_X_OFFSET + i * PLOT_WIDTH, PLOT_HEIGHT + TIC_LENGTH + 3);
       }
       return ctx.restore();
     },
@@ -306,12 +315,12 @@ export default {
       iteratePixels((i) => {
         const logDeltaV = Math.log(this.deltaVs[i]);
         let color;
-        if (isNaN(logDeltaV)) {
-          color = [255, 255, 255];
+        if (isFinite(logDeltaV)) {
+            const relativeDeltaV = (logDeltaV - logMinDeltaV) / (logMaxDeltaV - logMinDeltaV);
+            const colorIndex = Math.min(Math.trunc(relativeDeltaV * PALETTE.length), PALETTE.length - 1);
+            color = PALETTE[colorIndex];
         } else {
-          const relativeDeltaV = (logDeltaV - logMinDeltaV) / (logMaxDeltaV - logMinDeltaV);
-          const colorIndex = Math.min(Math.trunc(relativeDeltaV * PALETTE.length), PALETTE.length - 1);
-          color = PALETTE[colorIndex];
+          color = [255, 255, 255];
         }
         const rgbaIndex = i * 4;
         this.plotImageData.data[rgbaIndex] = color[0];
