@@ -1,33 +1,39 @@
-import {CelestialBody, TransferOptions, TransferType, findTransfer} from "../../ts-ksp/lib/index.js";
+import {
+    CelestialBody, Vector3,
+    TransferOptions,
+    TransferType,
+    findTransfer,
+    OrbitingCelestialBody, Orbit
+} from "../../ts-ksp/lib/index.js";
 
 const WIDTH = 300;
 const HEIGHT = 300;
 
-const porkchopCalculate = (mission, progressCallback, deltaVCallback) => {
-    const transferType = mission.transferType;
-    const originBody = (mission.originBody instanceof  CelestialBody) ? mission.originBody : CelestialBody.fromJSON(mission.originBody);
-    const initialOrbitalVelocity = mission.initialOrbitalVelocity;
-    const destinationBody = (mission.destinationBody instanceof CelestialBody) ? mission.destinationBody : CelestialBody.fromJSON(mission.destinationBody);
-    const finalOrbitalVelocity = mission.finalOrbitalVelocity;
-    const earliestDeparture = mission.earliestDeparture;
-    const shortestTimeOfFlight = mission.shortestTimeOfFlight;
-    const xResolution = mission.xScale / WIDTH;
-    const yResolution = mission.yScale / HEIGHT;
-    const originOrbit = originBody.orbit;
-    const destinationOrbit = destinationBody.orbit;
-    const n1 = originOrbit.normalVector();
-    const originPositions = [];
-    const originVelocities = [];
+const porkchopCalculate = (mission: any, progressCallback: (p: number) => void, deltaVCallback: (result: any) => void) => {
+    const transferType: TransferType = mission.transferType;
+    const originBody: OrbitingCelestialBody = (mission.originBody instanceof CelestialBody) ? mission.originBody : CelestialBody.fromJSON(mission.originBody);
+    const initialOrbitalVelocity: number = mission.initialOrbitalVelocity;
+    const destinationBody: OrbitingCelestialBody = (mission.destinationBody instanceof CelestialBody) ? mission.destinationBody : CelestialBody.fromJSON(mission.destinationBody);
+    const finalOrbitalVelocity: number = mission.finalOrbitalVelocity;
+    const earliestDeparture: number = mission.earliestDeparture;
+    const shortestTimeOfFlight: number = mission.shortestTimeOfFlight;
+    const xResolution: number = mission.xScale / WIDTH;
+    const yResolution: number = mission.yScale / HEIGHT;
+    const originOrbit: Orbit = originBody.orbit;
+    const destinationOrbit: Orbit = destinationBody.orbit;
+    const n1: Vector3 = originOrbit.normalVector();
+    const originPositions: Vector3[] = [];
+    const originVelocities: Vector3[] = [];
 
     // Pre-calculate origin positions and velocities
     for (let x = 0; x <= WIDTH; x++) {
-        const departureTime = earliestDeparture + x * xResolution;
-        const trueAnomaly = originOrbit.trueAnomalyAt(departureTime);
+        const departureTime: number = earliestDeparture + x * xResolution;
+        const trueAnomaly: number = originOrbit.trueAnomalyAt(departureTime);
         originPositions[x] = originOrbit.positionAtTrueAnomaly(trueAnomaly);
         originVelocities[x] = originOrbit.velocityAtTrueAnomaly(trueAnomaly);
     }
 
-    const iterateTransfers = (fn) => {
+    const iterateTransfers = (fn: (i: number, y: number, x: number, timeOfFlight: number, departureTime: number, arrivalTime: number) => void) => {
         let i = 0;
         for (let y = 0; y < HEIGHT; y++) {
             const timeOfFlight = shortestTimeOfFlight + ((HEIGHT - 1) - y) * yResolution;
@@ -40,14 +46,14 @@ const porkchopCalculate = (mission, progressCallback, deltaVCallback) => {
         }
     };
 
-    const deltaVs = new Float64Array(WIDTH * HEIGHT);
-    let minDeltaV = Infinity;
-    let maxDeltaV = 0;
-    let sumLogDeltaV = 0;
-    let sumSqLogDeltaV = 0;
-    let deltaVCount = 0;
-    let lastProgress = 0;
-    let minDeltaVPoint = null;
+    const deltaVs: Float64Array = new Float64Array(WIDTH * HEIGHT);
+    let minDeltaV: number = Infinity;
+    let maxDeltaV: number = 0;
+    let sumLogDeltaV: number = 0;
+    let sumSqLogDeltaV: number = 0;
+    let deltaVCount: number = 0;
+    let lastProgress: number = 0;
+    let minDeltaVPoint: {x: number, y: number} | undefined = undefined;
 
     iterateTransfers((i, y, x, timeOfFlight, departureTime, arrivalTime) => {
         const p1 = originPositions[x];

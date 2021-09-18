@@ -1,4 +1,10 @@
-export default [
+type RouteDefn = {
+    path: string,
+    name?: string,
+    component: string,
+};
+
+const routes: RouteDefn[] = [
     {
         path: '/',
         name: 'dashboard',
@@ -22,3 +28,5 @@ export default [
         component: 'slingshot-test',
     },
 ];
+
+export default routes;
