@@ -1,5 +1,7 @@
-import Vue from 'vue';
-import VueRouter from 'vue-router';
+import { createApp } from 'vue';
+import { createRouter, createWebHashHistory, RouteRecordRaw } from "vue-router";
+import { RouteDefn, routes } from './routes';
+import {CelestialBody} from "../../ts-ksp/src";
 
 /*
 // Create the hub which will contain global data, and store a reference to it in the Vue prototype
@@ -13,42 +15,42 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 */
 
-// Attach global mixins
-Vue.use(VueRouter);
-
 // Register all Vue components from the components directory
 const vueFiles = require.context('./components', true, /\.vue$/i);
-let components: {[index: string]: object} = {};
+const components: Map<string, object> = new Map<string, object>();
 vueFiles.keys().map((key) => {
     const componentName: string = key.split('/').slice(1).join('-').replace(/\.vue$/, '');
-    components[componentName] = Vue.component(componentName, vueFiles(key).default);
+    components.set(componentName, vueFiles(key).default);
 });
 
 // Setup routing
-import routes from './routes';
-const setRouteComponents = function(records: any) {
-    for (let record of records) {
-        record.component = components[record.component];
-    }
+const setRouteComponents = function(records: RouteDefn[]): RouteRecordRaw[] {
+    return records.map((record) => {
+        return {
+            path: record.path,
+            name: record.name,
+            component: components.get(record.component),
+        } as RouteRecordRaw;
+    });
 };
-setRouteComponents(routes);
-const router = new VueRouter({
-    routes: routes
+const router = createRouter({
+    history: createWebHashHistory(),
+    routes: setRouteComponents(routes),
 });
 
 // Initialize the app
 document.addEventListener('DOMContentLoaded', () => {
+
+    const appComponent = components.get('app');
     const appEle = document.getElementById('app');
-    if (! appEle) {
-        return;
-    }
-    const app = new Vue({
-        el: appEle,
-        router: router,
-        render: function(h) {
-            return h(components.app, {props: {}});
+    if (appComponent && appEle) {
+        const app = createApp(appComponent);
+        for (const [componentName, componentDefn] of components.entries()) {
+            app.component(componentName, componentDefn);
         }
-    });
-    // @ts-ignore
-    window.app = app;
+        app.use(router);
+        const vm = app.mount(appEle);
+        // @ts-ignore
+        window.app = app;
+    }
 });

@@ -14,5 +14,5 @@ mix.setPublicPath('public');
 mix.ts('src/app.ts', 'js');
 mix.js('src/porkchop-worker.js', 'js');
 mix.js('src/slingshot-porkchop-worker.js', 'js');
-mix.vue();
+mix.vue({version: 3});
 mix.sass('sass/app.scss', 'css');

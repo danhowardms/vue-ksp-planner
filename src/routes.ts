@@ -29,4 +29,4 @@ const routes: RouteDefn[] = [
     },
 ];
 
-export default routes;
+export {RouteDefn, routes};

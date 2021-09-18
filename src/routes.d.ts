@@ -4,4 +4,4 @@ declare type RouteDefn = {
     component: string;
 };
 declare const routes: RouteDefn[];
-export default routes;
+export { RouteDefn, routes };

@@ -110,7 +110,7 @@ export default {
       this.deltaVs = null;
       this.selectedPoint = null;
       if (this.useWorker) {
-        this.worker.postMessage(this.mission);
+        this.worker.postMessage(JSON.parse(JSON.stringify(this.mission)));
       } else {
         window.setTimeout(() => {
           porkchopCalculate(this.mission, this.updateProgress, this.updateDeltaV);
