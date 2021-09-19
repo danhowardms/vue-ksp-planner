@@ -1,7 +1,6 @@
 import { createApp } from 'vue';
 import { createRouter, createWebHashHistory, RouteRecordRaw } from "vue-router";
 import { RouteDefn, routes } from './routes';
-import {CelestialBody} from "../../ts-ksp/src";
 
 /*
 // Create the hub which will contain global data, and store a reference to it in the Vue prototype
@@ -51,6 +50,6 @@ document.addEventListener('DOMContentLoaded', () => {
         app.use(router);
         const vm = app.mount(appEle);
         // @ts-ignore
-        window.app = app;
+        window.vm = vm;
     }
 });

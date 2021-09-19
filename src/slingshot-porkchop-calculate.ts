@@ -1,39 +1,44 @@
-import {CelestialBody, OrbitingCelestialBody, findSlingshotRoute, SlingshotOptions} from "../../ts-ksp/lib/index.js";
+import {OrbitingCelestialBodyJSON, makeOrbitingCelestialBody, OrbitingCelestialBody, findSlingshotRoute, SlingshotOptions} from "../../ts-ksp";
 
-const WIDTH: number = 300;
-const HEIGHT: number = 300;
+type SlingshotMissionParams = {
+    originBody: OrbitingCelestialBody | OrbitingCelestialBodyJSON,
+    slingshotBody: OrbitingCelestialBody | OrbitingCelestialBodyJSON,
+    destinationBody: OrbitingCelestialBody | OrbitingCelestialBodyJSON,
+    initialOrbitalVelocity: number,
+    finalOrbitalVelocity: number,
+    departureRangeDays: [number, number],
+    durationRangeDays: [number, number],
+    width: number,
+    height: number,
+};
 
-const slingshotPorkchopCalculate = (mission: any, progressCallback: (p: number) => void, deltaVCallback: (result: any) => void) => {
-    const originBody: OrbitingCelestialBody = (mission.originBody instanceof  OrbitingCelestialBody) ? mission.originBody : OrbitingCelestialBody.fromJSON(mission.originBody);
+const slingshotPorkchopCalculate = (mission: SlingshotMissionParams, progressCallback: (p: number) => void, deltaVCallback: (values: [number, number, number][]) => void) => {
+    const originBody = makeOrbitingCelestialBody(mission.originBody);
+    const slingshotBody = makeOrbitingCelestialBody(mission.slingshotBody);
+    const destinationBody = makeOrbitingCelestialBody(mission.destinationBody);
     const initialOrbitalVelocity: number = mission.initialOrbitalVelocity;
-    const slingshotBody: OrbitingCelestialBody = (mission.slingshotBody instanceof OrbitingCelestialBody ? mission.slingshotBody : OrbitingCelestialBody.fromJSON(mission.slingshotBody));
-    const destinationBody: OrbitingCelestialBody = (mission.destinationBody instanceof OrbitingCelestialBody) ? mission.destinationBody : OrbitingCelestialBody.fromJSON(mission.destinationBody);
     const finalOrbitalVelocity: number = mission.finalOrbitalVelocity;
-    const earliestDeparture: number = mission.departureRange[0];
-    const shortestTimeOfFlight: number = mission.durationRange[0];
-    const xResolution: number = (mission.departureRange[1] - mission.departureRange[0]) / WIDTH;
-    const yResolution: number = (mission.durationRange[1] - mission.durationRange[0]) / HEIGHT;
+    const earliestDepartureDays: number = mission.departureRangeDays[0];
+    const shortestTimeOfFlightDays: number = mission.durationRangeDays[0];
+    const width = mission.width;
+    const height = mission.height;
+    const xResolution: number = (mission.departureRangeDays[1] - mission.departureRangeDays[0]) / width;
+    const yResolution: number = (mission.durationRangeDays[1] - mission.durationRangeDays[0]) / height;
 
     const iterateJourneys = (fn: (i: number, y: number, x: number, timeOfFlight: number, departureTime: number) => void) => {
         let i = 0;
-        for (let y = 0; y < HEIGHT; y++) {
-            const timeOfFlight = shortestTimeOfFlight + ((HEIGHT - 1) - y) * yResolution;
-            for (let x = 0; x < WIDTH; x++) {
-                const departureTime = earliestDeparture + x * xResolution;
+        for (let y = 0; y < height; y++) {
+            const timeOfFlight = (shortestTimeOfFlightDays + y * yResolution) * (6 * 60 * 60);
+            for (let x = 0; x < width; x++) {
+                const departureTime = (earliestDepartureDays + x * xResolution) * (6 * 60 * 60);
                 fn(i, y, x, timeOfFlight, departureTime);
                 i++;
             }
         }
     };
 
-    const deltaVs: Float64Array = new Float64Array(WIDTH * HEIGHT);
-    let minDeltaV: number = Infinity;
-    let maxDeltaV: number = 0;
-    let sumLogDeltaV: number = 0;
-    let sumSqLogDeltaV: number = 0;
-    let deltaVCount: number = 0;
+    let unsentData: [number, number, number][] = [];
     let lastProgress: number = Date.now();
-    let minDeltaVPoint: {x: number, y: number} | undefined = undefined;
 
     iterateJourneys((i, y, x, timeOfFlight, departureTime) => {
         const opts: SlingshotOptions = {
@@ -53,47 +58,18 @@ const slingshotPorkchopCalculate = (mission: any, progressCallback: (p: number) 
             console.log(e);
             deltaV = NaN;
         }
-        deltaVs[i] = deltaV;
-        if (deltaV < minDeltaV) {
-            minDeltaV = deltaV;
-            minDeltaVPoint = {x: x, y: (HEIGHT - 1) - y};
-        }
-        if (deltaV > maxDeltaV) {
-            maxDeltaV = deltaV;
-        }
-        if (! isNaN(deltaV)) {
-            const logDeltaV: number = Math.log(deltaV);
-            sumLogDeltaV += logDeltaV;
-            sumSqLogDeltaV += logDeltaV * logDeltaV;
-            deltaVCount++;
-        }
+        unsentData.push([x, y, deltaV]);
 
         const now = Date.now();
         if (now - lastProgress > 1000) {
-            progressCallback((y + 1) / HEIGHT);
-            deltaVCallback({
-                deltaVs: deltaVs,
-                minDeltaV: minDeltaV,
-                minDeltaVPoint: minDeltaVPoint,
-                maxDeltaV: maxDeltaV,
-                deltaVCount: deltaVCount,
-                sumLogDeltaV: sumLogDeltaV,
-                sumSqLogDeltaV: sumSqLogDeltaV
-            });
+            progressCallback((y + 1) / height);
+            deltaVCallback(unsentData);
             lastProgress = now;
+            unsentData = [];
         }
     });
 
-    deltaVCallback({
-        deltaVs: deltaVs,
-        minDeltaV: minDeltaV,
-        minDeltaVPoint: minDeltaVPoint,
-        maxDeltaV: maxDeltaV,
-        deltaVCount: deltaVCount,
-        sumLogDeltaV: sumLogDeltaV,
-        sumSqLogDeltaV: sumSqLogDeltaV
-    });
-
+    deltaVCallback(unsentData);
 };
 
-export {slingshotPorkchopCalculate};
+export {SlingshotMissionParams, slingshotPorkchopCalculate};

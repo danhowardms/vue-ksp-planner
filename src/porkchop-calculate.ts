@@ -3,17 +3,17 @@ import {
     TransferOptions,
     TransferType,
     findTransfer,
-    OrbitingCelestialBody, Orbit
-} from "../../ts-ksp/lib/index.js";
+    OrbitingCelestialBody, makeOrbitingCelestialBody, Orbit
+} from "../../ts-ksp";
 
 const WIDTH = 300;
 const HEIGHT = 300;
 
 const porkchopCalculate = (mission: any, progressCallback: (p: number) => void, deltaVCallback: (result: any) => void) => {
     const transferType: TransferType = mission.transferType;
-    const originBody: OrbitingCelestialBody = (mission.originBody instanceof CelestialBody) ? mission.originBody : CelestialBody.fromJSON(mission.originBody);
+    const originBody = makeOrbitingCelestialBody(mission.originBody);
+    const destinationBody = makeOrbitingCelestialBody(mission.destinationBody);
     const initialOrbitalVelocity: number = mission.initialOrbitalVelocity;
-    const destinationBody: OrbitingCelestialBody = (mission.destinationBody instanceof CelestialBody) ? mission.destinationBody : CelestialBody.fromJSON(mission.destinationBody);
     const finalOrbitalVelocity: number = mission.finalOrbitalVelocity;
     const earliestDeparture: number = mission.earliestDeparture;
     const shortestTimeOfFlight: number = mission.shortestTimeOfFlight;

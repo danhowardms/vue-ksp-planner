@@ -15,90 +15,86 @@
   </div>
 </template>
 
-<script>
-import {KerbolSystem, findSlingshotRoute, signedAngleInPlaneBetween, normSquaredV} from "../../../ts-ksp/lib/index.js";
+<script lang="ts">
+import {defineComponent, ref, computed, onMounted} from "vue";
+import {KerbolSystem, findSlingshotRoute, signedAngleInPlaneBetween, SlingshotPlanner} from "../../../ts-ksp/lib";
 
-export default {
-  data: function() {
-    return {
-      journey: null,
-    };
-  },
-  mounted: function() {
-    const originOrbitAltitudeKm = 100;
-    const destinationOrbitAltitudeKm = 100;
-    const originOrbitalSpeed = KerbolSystem.kerbin.circularOrbitVelocity(originOrbitAltitudeKm * 1000);
-    const destinationOrbitalSpeed = KerbolSystem.eve.circularOrbitVelocity(destinationOrbitAltitudeKm * 1000);
-    const opts = {
-      startTime: 26956800,
-      originBody: KerbolSystem.kerbin,
-      slingshotBody: KerbolSystem.eve,
-      destinationBody: KerbolSystem.moho,
-      totalDuration: 7015680,
-      originOrbitalSpeed: originOrbitalSpeed,
-      destinationOrbitalSpeed: destinationOrbitalSpeed,
-    };
-    this.journey = findSlingshotRoute(opts);
-  },
-  computed: {
-    slingshotOrbits: function() {
+export default defineComponent({
+  setup: function(props, context) {
+
+    const journey = ref<SlingshotPlanner | undefined>(undefined);
+
+    onMounted(() => {
+      const originOrbitAltitudeKm = 100;
+      const destinationOrbitAltitudeKm = 100;
+      const originOrbitalSpeed = KerbolSystem.kerbin.circularOrbitVelocity(originOrbitAltitudeKm * 1000);
+      const destinationOrbitalSpeed = KerbolSystem.eve.circularOrbitVelocity(destinationOrbitAltitudeKm * 1000);
+      const opts = {
+        startTime: 26956800,
+        originBody: KerbolSystem.kerbin,
+        slingshotBody: KerbolSystem.eve,
+        destinationBody: KerbolSystem.moho,
+        totalDuration: 7015680,
+        originOrbitalSpeed: originOrbitalSpeed,
+        destinationOrbitalSpeed: destinationOrbitalSpeed,
+      };
+      journey.value = findSlingshotRoute(opts);
+    });
+
+    const slingshotOrbits = computed(() => {
       const orbits = [];
-      if (this.journey) {
+      if (journey.value) {
         orbits.push({
-          orbit: this.journey.slingshotApproachOrbit,
-          interval: [this.journey.slingshotSoiInTime, this.journey.slingshotTime],
+          orbit: journey.value.slingshotApproachOrbit,
+          interval: [journey.value.slingshotSoiInTime, journey.value.slingshotTime],
         });
         orbits.push({
-          orbit: this.journey.slingshotExitOrbit,
-          interval: [this.journey.slingshotTime, this.journey.slingshotSoiOutTime],
+          orbit: journey.value.slingshotExitOrbit,
+          interval: [journey.value.slingshotTime, journey.value.slingshotSoiOutTime],
         });
       }
       return orbits;
-    },
-    transferOrbits: function() {
+    });
+
+    const transferOrbits = computed(() => {
       const orbits = [];
-      if (this.journey) {
+      if (journey.value) {
         orbits.push({
-          orbit: this.journey.transfer1.orbit,
-          interval: [this.journey.startTime, this.journey.slingshotTime],
+          orbit: journey.value.transfer1.orbit,
+          interval: [journey.value.startTime, journey.value.slingshotTime],
         });
         orbits.push({
-          orbit: this.journey.transfer2.orbit,
-          interval: [this.journey.slingshotTime, this.journey.endTime],
+          orbit: journey.value.transfer2.orbit,
+          interval: [journey.value.slingshotTime, journey.value.endTime],
         });
         orbits.push({
-          orbit: this.journey.originBody.orbit,
+          orbit: journey.value.originBody.orbit,
         });
         orbits.push({
-          orbit: this.journey.slingshotBody.orbit,
+          orbit: journey.value.slingshotBody.orbit,
         });
         orbits.push({
-          orbit: this.journey.destinationBody.orbit,
+          orbit: journey.value.destinationBody.orbit,
         });
       }
       return orbits;
-    },
-    vSsExit: function() {
-      if (this.journey) {
-        const orbit = this.journey.slingshotExitOrbit;
-        const ta = orbit.trueAnomalyAtRadiusOutbound(this.journey.slingshotBody.sphereOfInfluence);
+    });
+
+    const vSsExit = computed(() => {
+      if (journey.value) {
+        const orbit = journey.value.slingshotExitOrbit;
+        const ta = orbit.trueAnomalyAtRadiusOutbound(journey.value.slingshotBody.sphereOfInfluence);
         return orbit.velocityAtTrueAnomaly(ta);
       }
-    },
-    sa: function() {
-      if (this.journey) {
-        return signedAngleInPlaneBetween(this.vSsExit, this.journey.vT2StartSs, this.journey.ssManeuverPlane);
+    });
+
+    const sa = computed(() => {
+      if (journey.value && vSsExit.value) {
+        return signedAngleInPlaneBetween(vSsExit.value, journey.value.vT2StartSs, journey.value.ssManeuverPlane);
       }
-    }
-  },
-  methods: {
-    specEng: function(t) {
-      const orbit = this.journey.slingshotExitOrbit;
-      const ta = orbit.trueAnomalyAt(t);
-      const v = orbit.velocityAtTrueAnomaly(ta);
-      const r = orbit.radiusAtTrueAnomaly(ta);
-      return 0.5 * normSquaredV(v) - this.journey.slingshotBody.gravitationalParameter / r;
-    }
+    });
+
+    return { journey, slingshotOrbits, transferOrbits, vSsExit, sa };
   }
-};
+});
 </script>

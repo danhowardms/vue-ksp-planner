@@ -1,125 +1,148 @@
 <template>
-  <div>
-    <p v-if="working">Progress: {{ progress }}</p>
-    <canvas width="540" height="360" ref="plotCanvas" @click="onClickPlot" style="cursor: crosshair"></canvas>
-  </div>
+  <canvas width="540" height="360" ref="plotCanvas" @click="onClickPlot" style="cursor: crosshair"></canvas>
 </template>
 
-<script>
-import {porkchopCalculate} from "../porkchop-calculate";
-import {findTransfer, TransferOptions} from "../../../ts-ksp";
+<script lang="ts">
+import {defineComponent, PropType, ref, toRefs, computed, watch, onMounted} from "vue";
+import {Porkchop, PorkchopPalette} from "../porkchop";
 
 const PLOT_WIDTH = 300;
 const PLOT_HEIGHT = 300;
 const PLOT_X_OFFSET = 70;
 const TIC_LENGTH = 5;
 
-const iteratePixels = (fn) => {
-  let i = 0;
-  for (let y = 0; y < PLOT_HEIGHT; y++) {
-    for (let x = 0; x < PLOT_WIDTH; x++) {
-      fn(i, y, x);
-      i++;
-    }
-  }
+// There are 3 coordinate systems:
+// A) The coordinates of the quantities represented on the chart, float vals,
+//    {xAxis.min to xAxis.max, yAxis.min to yAxis.max}
+//    We'll call an xy pair in this system QtyPoint
+// B) The coordinates of the plot area, integers,
+//    {0 to PLOT_WIDTH, 0 to PLOT_HEIGHT}
+//    We'll call an xy pair in this system PlotPoint
+// C) The coordinates of the <canvas> element (where y=0 is at the top)
+//    We'll call an xy pair in this system CanvasPoint
+
+type QtyPoint = {
+  x: number;
+  y: number;
 };
 
-// Populate our palette with colors starting blue and getting redder
-const PALETTE = [];
-for (let i = 64; i < 69; i++) {
-  PALETTE.push([64, i, 255]);
-}
-for (let i = 133; i <= 255; i++) {
-  PALETTE.push([128, i, 255]);
-}
-for (let i = 255; i >= 128; i--) {
-  PALETTE.push([128, 255, i]);
-}
-for (let i = 128; i <= 255; i++) {
-  PALETTE.push([i, 255, 128]);
-}
-for (let i = 255; i >= 128; i--) {
-  PALETTE.push([255, i, 128]);
-}
+type PlotPoint = {
+  x: number;
+  y: number;
+};
 
-export default {
+type CanvasPoint = {
+  x: number;
+  y: number;
+};
+
+type xYAxis = {
+  title: string;
+  unit: string;
+  min: number;
+  max: number;
+};
+
+type zAxis = {
+  title: string;
+  unit: string;
+};
+
+export default defineComponent({
   props: {
-    mission: {
-      type: Object,
+    porkchop: {
+      type: Porkchop,
       required: true,
     },
-    useWorker: {
-      type: Boolean,
-      default: false,
-    }
+    xAxis: {
+      type: Object as PropType<xYAxis>,
+      required: true,
+    },
+    yAxis: {
+      type: Object as PropType<xYAxis>,
+      required: true,
+    },
+    zAxis: {
+      type: Object as PropType<zAxis>,
+      required: true,
+    },
+    selectedQtyPoint: {
+      type: Object as PropType<QtyPoint>,
+      required: false,
+    },
+    updateKey: {}
   },
-  data: function () {
-    return {
-      working: false,
-      progress: null,
-      selectedPoint: null,
-    }
-  },
-  mounted: function() {
-    this.canvas = this.$refs.plotCanvas;
-    this.ctx = this.canvas.getContext('2d');
-    this.plotImageData = this.ctx.createImageData(PLOT_WIDTH, PLOT_HEIGHT);
-    if (this.useWorker) {
-      this.worker = new Worker("js/porkchop-worker.js");
-      this.worker.onmessage = (event) => {
-        this.workerMessage(event);
+  setup: function(props, context) {
+    const { xAxis, yAxis, zAxis, selectedQtyPoint, updateKey } = toRefs(props);
+    const porkchop = props.porkchop;
+    const plotCanvas = ref<HTMLCanvasElement | null>(null);
+    let ctx: CanvasRenderingContext2D | null = null;
+
+    const qtyXScale = computed(() => {
+      return (xAxis.value.max - xAxis.value.min) / porkchop.width;
+    });
+    const qtyYScale = computed(() => {
+      return (yAxis.value.max - yAxis.value.min) / porkchop.height;
+    });
+
+    const plotPointToQtyPoint = (p: PlotPoint): QtyPoint => {
+      return {
+        x: xAxis.value.min + p.x * qtyXScale.value,
+        y: yAxis.value.min + p.y * qtyYScale.value,
       };
-    }
-    this.prepareCanvas();
-    this.calculate();
-  },
-  beforeDestroy: function() {
-    this.worker.terminate();
-  },
-  watch: {
-    mission: function() {
-      this.calculate(true);
-    },
-    selectedTransfer: function() {
-      this.$emit('selectedTransfer', this.selectedTransfer);
-    }
-  },
-  computed: {
-    selectedTransfer: function() {
-      if (! this.selectedPoint) {
-        return null;
+    };
+
+    const qtyPointToPlotPoint = (p: QtyPoint): PlotPoint => {
+      return {
+        x: (p.x - xAxis.value.min) / qtyXScale.value,
+        y: (p.y - yAxis.value.min) / qtyYScale.value,
+      };
+    };
+
+    const canvasXScale = computed(() => {
+      return PLOT_WIDTH / porkchop.width;
+    });
+    const canvasYScale = computed(() => {
+      return PLOT_HEIGHT / porkchop.height;
+    });
+
+    const plotPointToCanvasPoint = (p: PlotPoint): CanvasPoint => {
+      return {
+        x: PLOT_X_OFFSET + p.x * canvasXScale.value,
+        y: PLOT_HEIGHT - 1 - p.y * canvasYScale.value,
+      };
+    };
+
+    const canvasPointToPlotPoint = (p: CanvasPoint): PlotPoint => {
+      return {
+        x: (p.x - PLOT_X_OFFSET) / canvasXScale.value,
+        y: (PLOT_HEIGHT - 1 - p.y) / canvasYScale.value,
+      };
+    };
+
+    onMounted(() => {
+      ctx = plotCanvas.value ? plotCanvas.value.getContext('2d') : null;
+      if (ctx) {
+        drawXYAxes(ctx);
+        drawXYAxisScale(ctx);
+        drawZAxisKey(ctx);
+        redrawPlot(ctx);
       }
-      const xResolution = this.mission.xScale / PLOT_WIDTH;
-      const yResolution = this.mission.yScale / PLOT_HEIGHT;
-      const departureTime = this.mission.earliestDeparture + this.selectedPoint.x * xResolution;
-      const timeOfFlight = this.mission.shortestTimeOfFlight + this.selectedPoint.y * yResolution;
-      const opts = new TransferOptions(this.mission.originBody, this.mission.destinationBody, departureTime, timeOfFlight, this.mission.initialOrbitalVelocity, this.mission.finalOrbitalVelocity);
-      return findTransfer(this.mission.transferType, opts);
-    }
-  },
-  methods: {
-    calculate: function (erase) {
-      if (erase == null) {
-        erase = false;
+    });
+
+    watch(updateKey, () => {
+      if (ctx) {
+        redrawPlot(ctx);
       }
-      if (erase) {
-        this.ctx.clearRect(PLOT_X_OFFSET, 0, PLOT_WIDTH, PLOT_HEIGHT);
+    });
+
+    watch(selectedQtyPoint, () => {
+      if (ctx) {
+        redrawPlot(ctx);
       }
-      this.ctx.clearRect(PLOT_X_OFFSET + PLOT_WIDTH + 85, 0, 95, PLOT_HEIGHT + 10);
-      this.drawAxisLabels();
-      this.deltaVs = null;
-      this.selectedPoint = null;
-      if (this.useWorker) {
-        this.worker.postMessage(JSON.parse(JSON.stringify(this.mission)));
-      } else {
-        window.setTimeout(() => {
-          porkchopCalculate(this.mission, this.updateProgress, this.updateDeltaV);
-        }, 100);
-      }
-      this.working = true;
-    },
-    prepareCanvas: function () {
-      const ctx = this.ctx;
+    });
+
+    const drawXYAxes = (ctx: CanvasRenderingContext2D): void => {
       ctx.save();
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'black';
@@ -162,186 +185,120 @@ export default {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'black';
-      ctx.fillText("Departure Date (days from epoch)", PLOT_X_OFFSET + PLOT_WIDTH / 2, PLOT_HEIGHT + 40);
+      ctx.fillText(xAxis.value.title, PLOT_X_OFFSET + PLOT_WIDTH / 2, PLOT_HEIGHT + 40);
       ctx.save();
       ctx.rotate(-Math.PI / 2);
       ctx.textBaseline = 'top';
-      ctx.fillText("Time of Flight (days)", -PLOT_HEIGHT / 2, 0);
+      ctx.fillText(yAxis.value.title, -PLOT_HEIGHT / 2, 0);
       ctx.restore();
+      ctx.restore();
+    };
 
-      // Draw palette key
-      const paletteKey = ctx.createImageData(20, PLOT_HEIGHT);
-      let i = 0;
-      for (let y = 0; y < PLOT_HEIGHT; y++) {
-        const j = Math.trunc((PLOT_HEIGHT - y - 1) * PALETTE.length / PLOT_HEIGHT);
-        for (let x = 0; x < 20; x++) {
-          paletteKey.data[i++] = PALETTE[j][0];
-          paletteKey.data[i++] = PALETTE[j][1];
-          paletteKey.data[i++] = PALETTE[j][2];
-          paletteKey.data[i++] = 255;
-        }
-      }
-      ctx.putImageData(paletteKey, PLOT_X_OFFSET + PLOT_WIDTH + 60, 0);
-      ctx.fillText("∆v", PLOT_X_OFFSET + PLOT_WIDTH + 45, PLOT_HEIGHT / 2);
-      return ctx.restore();
-    },
-    drawDeltaVScale: function (logMinDeltaV, logMaxDeltaV) {
-      //var ctx, deltaV, _n;
-      const ctx = this.ctx;
-      ctx.save();
-      ctx.font = '10pt "Helvetic Neue",Helvetica,Arial,sans serif';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = 'black';
-      ctx.textBaseline = 'alphabetic';
-      for (let i = 0; i < 1.0; i += 0.25) {
-        let deltaV = Math.exp(i * (logMaxDeltaV - logMinDeltaV) + logMinDeltaV);
-        if (deltaV.toFixed().length > 6) {
-          deltaV = deltaV.toExponential(3);
-        } else {
-          deltaV = deltaV.toFixed();
-        }
-        ctx.fillText(deltaV + " m/s", PLOT_X_OFFSET + PLOT_WIDTH + 85, (1.0 - i) * PLOT_HEIGHT);
-        ctx.textBaseline = 'middle';
-      }
-      ctx.textBaseline = 'top';
-      let deltaV = Math.exp(logMaxDeltaV);
-      if (deltaV.toFixed().length > 6) {
-        deltaV = deltaV.toExponential(3);
-      } else {
-        deltaV = deltaV.toFixed();
-      }
-      ctx.fillText(deltaV + " m/s", PLOT_X_OFFSET + PLOT_WIDTH + 85, 0);
-      return ctx.restore();
-    },
-    drawAxisLabels: function() {
-      const ctx = this.ctx;
+    const drawXYAxisScale = (ctx: CanvasRenderingContext2D): void => {
       ctx.save();
       ctx.clearRect(20, 0, PLOT_X_OFFSET - TIC_LENGTH - 21, PLOT_HEIGHT + TIC_LENGTH);
       ctx.clearRect(PLOT_X_OFFSET - 40, PLOT_HEIGHT + TIC_LENGTH, PLOT_WIDTH + 80, 20);
       ctx.font = '10pt "Helvetic Neue",Helvetica,Arial,sans serif';
       ctx.fillStyle = 'black';
       ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      for (let i = 0; i <= 1.0; i += 0.25) {
-        if (i === 1.0) {
-          ctx.textBaseline = 'top';
-        }
-        ctx.fillText(Math.trunc((this.mission.shortestTimeOfFlight + i * this.mission.yScale) / (6 * 60 * 60)), PLOT_X_OFFSET - TIC_LENGTH - 3, (1.0 - i) * PLOT_HEIGHT);
+      for (let i = 0; i <= 4; i ++) {
+        ctx.textBaseline = (i === 4 ? 'top' : 'middle');
+        const pp: PlotPoint = {x: 0, y: PLOT_HEIGHT * i / 4};
+        const qp: QtyPoint = plotPointToQtyPoint(pp);
+        ctx.fillText(Math.trunc(qp.y).toString(), PLOT_X_OFFSET - TIC_LENGTH - 3, PLOT_HEIGHT - pp.y);
       }
       ctx.textAlign = 'center';
-      for (let i = 0; i <= 1.0; i += 0.25) {
-        ctx.fillText(Math.trunc((this.mission.earliestDeparture + i * this.mission.xScale) / (6 * 60 * 60)), PLOT_X_OFFSET + i * PLOT_WIDTH, PLOT_HEIGHT + TIC_LENGTH + 3);
+      for (let i = 0; i <= 4; i ++) {
+        const pp: PlotPoint = {x: PLOT_WIDTH * i / 4, y: 0};
+        const qp: QtyPoint = plotPointToQtyPoint(pp);
+        ctx.fillText(Math.trunc(qp.x).toString(), PLOT_X_OFFSET + pp.x, PLOT_HEIGHT + TIC_LENGTH + 3);
       }
       return ctx.restore();
-    },
-    drawPlot: function (pointer) {
-      if (this.deltaVs == null) {
-        return;
-      }
-      const ctx = this.ctx;
+    };
+
+    const drawZAxisKey = (ctx: CanvasRenderingContext2D): void => {
       ctx.save();
-      // Draw the actual plot data pixels into the plot square
-      ctx.putImageData(this.plotImageData, PLOT_X_OFFSET, 0);
-
-      // draw crosshairs over selected point
-      ctx.lineWidth = 1;
-      if (this.selectedPoint != null) {
-        const x = this.selectedPoint.x;
-        const y = this.selectedPoint.y;
-        ctx.beginPath();
-        if ((pointer != null ? pointer.x : void 0) !== x) {
-          ctx.moveTo(PLOT_X_OFFSET + x, 0);
-          ctx.lineTo(PLOT_X_OFFSET + x, PLOT_HEIGHT);
-        }
-        if ((pointer != null ? pointer.y : void 0) !== y) {
-          ctx.moveTo(PLOT_X_OFFSET, (PLOT_HEIGHT - 1) - y);
-          ctx.lineTo(PLOT_X_OFFSET + PLOT_WIDTH, (PLOT_HEIGHT - 1) - y);
-        }
-        ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-        ctx.stroke();
-      }
-
-      // label the cursor with the deltaV for that point
-      if (pointer != null) {
-        const x = pointer.x;
-        const y = pointer.y;
-        ctx.beginPath();
-        ctx.moveTo(PLOT_X_OFFSET + x, 0);
-        ctx.lineTo(PLOT_X_OFFSET + x, PLOT_HEIGHT);
-        ctx.moveTo(PLOT_X_OFFSET, (PLOT_HEIGHT - 1) - y);
-        ctx.lineTo(PLOT_X_OFFSET + PLOT_WIDTH, (PLOT_HEIGHT - 1) - y);
-        ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-        ctx.stroke();
-        const deltaV = this.deltaVs[Math.trunc(((PLOT_HEIGHT - 1) - y) * PLOT_WIDTH + x)];
-        if (!isNaN(deltaV)) {
-          const tip = " " + String.fromCharCode(0x2206) + "v = " + deltaV.toFixed() + " m/s ";
-          ctx.font = '10pt "Helvetic Neue",Helvetica,Arial,sans serif';
-          ctx.fillStyle = 'black';
-          ctx.textAlign = x < PLOT_WIDTH / 2 ? 'left' : 'right';
-          ctx.textBaseline = y < PLOT_HEIGHT - 16 ? 'bottom' : 'top';
-          ctx.fillText(tip, x + PLOT_X_OFFSET, (PLOT_HEIGHT - 1) - y);
+      const paletteKey = ctx.createImageData(20, PLOT_HEIGHT);
+      let i = 0;
+      for (let y = 0; y < PLOT_HEIGHT; y++) {
+        const j = Math.trunc((PLOT_HEIGHT - y - 1) * PorkchopPalette.length / PLOT_HEIGHT);
+        for (let x = 0; x < 20; x++) {
+          paletteKey.data[i++] = PorkchopPalette[j][0];
+          paletteKey.data[i++] = PorkchopPalette[j][1];
+          paletteKey.data[i++] = PorkchopPalette[j][2];
+          paletteKey.data[i++] = 255;
         }
       }
-      return ctx.restore();
-    },
-    updateProgress: function(progress) {
-      this.progress = progress;
-    },
-    updateDeltaV: function(result) {
-      this.progress = null;
-      this.deltaVs = (result.deltaVs instanceof ArrayBuffer) ? (new Float64Array(result.deltaVs)) : result.deltaVs;
-      const logMinDeltaV = Math.log(result.minDeltaV);
-      const mean = result.sumLogDeltaV / result.deltaVCount;
-      const stddev = Math.sqrt(result.sumSqLogDeltaV / result.deltaVCount - mean * mean);
-      const logMaxDeltaV = Math.min(Math.log(result.maxDeltaV), mean + 2 * stddev);
+      ctx.putImageData(paletteKey, PLOT_X_OFFSET + PLOT_WIDTH + 60, 0);
+      ctx.fillText(zAxis.value.title, PLOT_X_OFFSET + PLOT_WIDTH + 45, PLOT_HEIGHT / 2);
+      ctx.restore();
+    }
 
-      iteratePixels((i) => {
-        const logDeltaV = Math.log(this.deltaVs[i]);
-        let color;
-        if (isNaN(logDeltaV)) {
-          color = [255, 255, 255];
+    const drawZAxisScale = (ctx: CanvasRenderingContext2D): void => {
+      const logMinVal = porkchop.logStats.minVal;
+      const logMaxVal = porkchop.logStats.maxVal;
+      ctx.save();
+      ctx.clearRect(PLOT_X_OFFSET + PLOT_WIDTH + 80, 0, 100, 360);
+      ctx.font = '10pt "Helvetic Neue",Helvetica,Arial,sans serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'black';
+      ctx.textBaseline = 'alphabetic';
+      for (let i = 0; i <= 4; i ++) {
+        let value = Math.exp((i / 4) * (logMaxVal - logMinVal) + logMinVal);
+        let valueStr: string;
+        if (value.toFixed().length > 6) {
+          valueStr = value.toExponential(3);
         } else {
-          const relativeDeltaV = (logDeltaV - logMinDeltaV) / (logMaxDeltaV - logMinDeltaV);
-          const colorIndex = Math.min(Math.trunc(relativeDeltaV * PALETTE.length), PALETTE.length - 1);
-          color = PALETTE[colorIndex];
+          valueStr = value.toFixed();
         }
-        const rgbaIndex = i * 4;
-        this.plotImageData.data[rgbaIndex] = color[0];
-        this.plotImageData.data[rgbaIndex + 1] = color[1];
-        this.plotImageData.data[rgbaIndex + 2] = color[2];
-        this.plotImageData.data[rgbaIndex + 3] = 255;
-      });
+        ctx.textBaseline = (i == 0 ? 'alphabetic' : (i == 4 ? 'top' : 'middle'));
+        ctx.fillText(valueStr + ' ' + zAxis.value.unit, PLOT_X_OFFSET + PLOT_WIDTH + 85, (1.0 - (i / 4)) * PLOT_HEIGHT);
+      }
+      ctx.restore();
+    };
 
-      this.drawDeltaVScale(logMinDeltaV, logMaxDeltaV);
-      this.selectedPoint = result.minDeltaVPoint;
-      this.drawPlot();
-      this.progress = null;
-      this.working = false;
-    },
-    workerMessage: function(event) {
-      if ('log' in event.data) {
-        console.log(event.data.log);
+    const redrawPlot = (ctx: CanvasRenderingContext2D): void => {
+      // Draw the actual plot data pixels into the plot square
+      ctx.drawImage(porkchop.canvas, PLOT_X_OFFSET, 0, PLOT_WIDTH, PLOT_HEIGHT);
+
+      // Update the palette key values
+      drawZAxisScale(ctx);
+
+      // Draw crosshairs at the selected point
+      if (selectedQtyPoint.value) {
+        drawCrosshairs(ctx, selectedQtyPoint.value);
       }
-      if ('progress' in event.data) {
-        this.updateProgress(event.data.progress);
-      }
-      if ('deltaVs' in event.data) {
-        this.updateDeltaV(event.data);
-      }
-    },
-    onClickPlot: function(event) {
-      // Click, select new transfer
-      const rect = this.canvas.getBoundingClientRect();
-      const x = Math.trunc(event.clientX - rect.left) - PLOT_X_OFFSET;
-      const y = PLOT_HEIGHT - Math.trunc(event.clientY - rect.top);
-      if (x >= 0 && x < PLOT_WIDTH && y >= 0 && y < PLOT_HEIGHT) {
-        const i = (y * PLOT_WIDTH + x);
-        if (isFinite(this.deltaVs[i])) {
-          this.selectedPoint = {x, y};
-          this.drawPlot();
+    };
+
+    const drawCrosshairs = (ctx: CanvasRenderingContext2D, qp: QtyPoint): void => {
+      const pp: PlotPoint = qtyPointToPlotPoint(qp);
+      const cp: CanvasPoint = plotPointToCanvasPoint(pp);
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cp.x, 0);
+      ctx.lineTo(cp.x, PLOT_HEIGHT);
+      ctx.moveTo(PLOT_X_OFFSET, cp.y);
+      ctx.lineTo(PLOT_X_OFFSET + PLOT_WIDTH, cp.y);
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    const onClickPlot = (event: PointerEvent) => {
+      if (plotCanvas.value && ctx) {
+        const rect = plotCanvas.value.getBoundingClientRect();
+        const cp: CanvasPoint = {x: event.clientX - rect.left, y: event.clientY - rect.top};
+        const pp: PlotPoint = canvasPointToPlotPoint(cp);
+        const qp: QtyPoint = plotPointToQtyPoint(pp);
+        const value = porkchop.getValue(pp.x, pp.y);
+        if (isFinite(value)) {
+          context.emit('selected', {pp, qp, value});
         }
       }
-    },
+    };
+
+    return { plotCanvas, onClickPlot };
   }
-};
+});
 </script>

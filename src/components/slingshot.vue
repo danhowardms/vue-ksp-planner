@@ -92,12 +92,6 @@ export default {
     destinationBody: function() {
       return CelestialBody.getByName(this.destinationBodyName);
     },
-    departAfter: function() {
-      return this.departAfterDays * 6 * 60 * 60;
-    },
-    travelTime: function() {
-      return this.travelTimeDays * 6 * 60 * 60;
-    },
     slingshotOrbits: function() {
       const orbits = [];
       if (this.selectedJourney) {
@@ -149,8 +143,8 @@ export default {
         destinationBody: this.destinationBody,
         initialOrbitalVelocity: originOrbitalSpeed,
         finalOrbitalVelocity: destinationOrbitalSpeed,
-        departureRange: [this.departMinDays * 6 * 60 * 60, this.departMaxDays * 6 * 60 * 60],
-        durationRange: [this.travelTimeMinDays * 6 * 60 * 60, this.travelTimeMaxDays * 6 * 60 * 60],
+        departureRangeDays: [this.departMinDays, this.departMaxDays],
+        durationRangeDays: [this.travelTimeMinDays, this.travelTimeMaxDays],
       };
     }
   }
