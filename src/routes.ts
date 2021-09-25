@@ -2,6 +2,7 @@ type RouteDefn = {
     path: string,
     name?: string,
     component: string,
+    props?: (route: any) => object,
 };
 
 const routes: RouteDefn[] = [
@@ -21,6 +22,7 @@ const routes: RouteDefn[] = [
     },
     {
         path: '/slingshot',
+        name: 'slingshot',
         component: 'slingshot',
     },
     {

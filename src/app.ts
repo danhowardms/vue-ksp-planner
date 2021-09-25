@@ -29,6 +29,7 @@ const setRouteComponents = function(records: RouteDefn[]): RouteRecordRaw[] {
             path: record.path,
             name: record.name,
             component: components.get(record.component),
+            props: record.props,
         } as RouteRecordRaw;
     });
 };
